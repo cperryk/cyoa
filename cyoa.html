@@ -1,0 +1,299 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<!-- saved from url=(0048)http://local.interactives.com/14-02/cyoa/htdocs/ -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><link type="text/css" href="./cyoa_files/article.56c8e5b1.css" rel="stylesheet" media="screen"><link type="text/css" href="./cyoa_files/screen.d41d8cd9.css" rel="stylesheet" media="screen"><script type="text/javascript" src="./cyoa_files/jquery-2.1.0.min.js"></script><title>cyoa</title></head><body>
+    <!-- paste into RenderHTML-->
+    <!--header scripts-->
+    <script type="text/javascript" src="./cyoa_files/raphael-min.js"></script>
+    <script type="text/javascript">        //<![CDATA[
+        // Code by Chris Kirk, Interactives Editor, Slate.com. cperryk.com
+        $(function(){
+	Raphael.fn.arrow = function (x1, y1, x2, y2, size) {
+		var angle = Math.atan2(x1-x2,y2-y1);
+		angle = (angle / (2 * Math.PI)) * 360;
+		var arrowPath = this.path("M" + x2 + " " + y2 + " L" + (x2 - size) + " " + (y2 - size) + " L" + (x2 - size) + " " + (y2 + size) + " L" + x2 + " " + y2 ).attr("fill","black").rotate((90+angle),x2,y2);
+		var linePath = this.path("M" + x1 + " " + y1 + " L" + x2 + " " + y2);
+		return [linePath,arrowPath];
+	};
+	var BOXES = [
+		{'text':'Box 0','posx':100,'posy':100,'type':'question'}
+		//{'text':'Box 1','posx':100,'posy':200,'type':'question'},
+		//{'text':'Box 2','posx':200,'posy':300,'type':'question'},
+		//{'text':'Box 3','posx':400,'posy':500,'type':'question'}
+	];
+	function Interactive(){
+		this.space = $('#space');
+		this.paper = new Raphael('space',10000,10000);
+		this.boxes = (function(BOXES,self){
+			var out = [];
+			for(var i=0;i<BOXES.length;i++){
+				out.push(new Box(BOXES[i],self,i));
+			}
+			return out;
+		}(BOXES,this));
+		this.addEventListeners();
+	}
+	Interactive.prototype = {
+
+		addEventListeners:function(){
+			var self = this;
+			this.space
+				.click(function(e){
+					if(!$(e.target).hasClass('box')){
+						if(self.selected_box){
+							self.selected_box.deselectBox();
+							delete self.selected_box;
+						}
+					}
+				})
+				.on('click','.box',function(){
+					var id = $(this).data('box_id');
+					if(self.selected_box!==undefined){
+						if(self.selected_box === self.boxes[id]){
+							self.selected_box.deselectBox();
+							delete self.selected_box;
+						}
+						else{
+							self.selected_box.connect(self.boxes[id]);
+							self.selected_box.deselectBox();
+							delete self.selected_box;
+						}
+					}
+					else{
+						self.boxes[id].selectBox();
+					}
+				});
+		}
+	};
+	function Box(conf,par,id){
+		this.id = id;
+		this.par = par;
+		this.type = conf.type;
+		this.obj = $('<div>')	
+			.addClass('box '+conf.type)
+			.html(conf.text)
+			.data('box_id',id)
+			.css({
+				'left':conf.posx,
+				'top':conf.posy
+			})
+			.appendTo(self.space)
+			.draggable({
+				drag:function(){
+					var id = $(this).data('box_id');
+					par.boxes[id].reprintLines();
+				}
+			})
+			.dblclick(function(){
+				if(!self.editing){
+					$(this).html('<textarea>'+$(this).html()+'</textarea>');
+					$(this).find('textarea').focus();
+					var box_obj = $(this);
+					self.editing = true;
+					$(document).click(function(e){
+						if(e.target!==box_obj.find('textarea').get(0)){
+							box_obj.html(box_obj.find('textarea').val());
+							$(document).unbind('click');
+							self.editing = false;
+						}
+					});
+				}
+			});
+		this.out_connections = conf.out_connections ? conf.out_connections : [];
+		this.in_connections = conf.in_connections ? conf.in_connections : [];
+		this.lines = {};
+	}
+	Box.prototype = {
+		connect:function(to_box){
+			if(this.out_connections.indexOf(to_box)===-1&&this.in_connections.indexOf(to_box)===-1){
+				this.out_connections.push(to_box);
+				to_box.in_connections.push(this);
+				this.lineTo(to_box);
+			}
+		},
+		lineTo:function(to_box, i){
+			var a_x = this.obj.position().left + this.obj.outerWidth()/2;
+			var a_y = this.obj.position().top + this.obj.outerHeight()/2;
+			var b_x = to_box.obj.position().left + to_box.obj.outerWidth()/2;
+			var b_y = to_box.obj.position().top + to_box.obj.outerHeight()/2;
+			//var adjust_x = b_x - to_box.obj.position().left;
+			//var adjust_y = b_y - to_box.obj.position().top;
+			var angleInDegrees = Math.atan2(b_y-a_y,b_x-a_x) * 180 / Math.PI;
+
+			var c_y;
+			var opposite_side;
+			var tangent;
+			var adjacent_side;
+			var c_x;
+			if(angleInDegrees>=135){
+				c_x = b_x + to_box.obj.outerWidth()/2;
+				opposite_side = to_box.obj.outerWidth()/2;
+				tangent = Math.tan(Math.abs(90-angleInDegrees)*(Math.PI/180));
+				adjacent_side = opposite_side / tangent;
+				c_y = b_y - adjacent_side;
+			}
+			else if(angleInDegrees>=45){
+				c_y = b_y - to_box.obj.outerHeight()/2;
+				opposite_side = to_box.obj.outerHeight()/2;
+				tangent = Math.tan(angleInDegrees*(Math.PI/180));
+				adjacent_side = opposite_side / tangent;
+				c_x = b_x - adjacent_side;
+			}
+			else if(angleInDegrees>=-45){
+				c_x = b_x - to_box.obj.outerWidth()/2;
+				opposite_side = to_box.obj.outerWidth()/2;
+				tangent = Math.tan(Math.abs(90-angleInDegrees)*(Math.PI/180));
+				adjacent_side = opposite_side / tangent;
+				c_y = b_y - adjacent_side;
+			}
+			else if(angleInDegrees>=-135){
+				c_y = b_y + to_box.obj.outerHeight()/2;
+				opposite_side = to_box.obj.outerHeight()/2;
+				tangent = Math.tan(angleInDegrees*(Math.PI/180));
+				adjacent_side = opposite_side / tangent;
+				c_x = b_x + adjacent_side;
+			}
+			else if(angleInDegrees <= -135){
+				c_x = b_x + to_box.obj.outerWidth()/2;
+				opposite_side = to_box.obj.outerWidth()/2;
+				tangent = Math.tan(Math.abs(90-angleInDegrees)*(Math.PI/180));
+				adjacent_side = opposite_side / tangent;
+				c_y = b_y + adjacent_side;
+			}
+			/*
+			if(console){console.log('opp side:'+opposite_side);}
+			if(console){console.log('degrees:'+angleInDegrees);}
+			if(console){console.log('tangent:'+tangent);}
+			if(console){console.log('computed adj side: '+adjacent_side);}
+			*/
+
+			//var line = this.par.paper.path('M'+a_x+','+a_y+'L'+c_x+','+c_y);
+			var line = this.par.paper.arrow(a_x,a_y,c_x,c_y,8);
+			line.to_box = to_box;
+			line.from_box = this;
+			this.lines[to_box.id] = line;
+			to_box.lines[this.id] = line;
+		},
+		reprintLines:function(){
+			for(var i in this.lines){
+				var line = this.lines[i];
+				var to_box = line.to_box;
+				var from_box = line.from_box;
+				line[0].remove();
+				line[1].remove();
+				delete from_box.lines[to_box.id];
+				delete to_box.lines[from_box.id];
+				from_box.lineTo(to_box);
+			}
+		},
+		selectBox:function(){
+			var self = this;
+			this.obj.addClass('selected');
+			this.par.selected_box = this;
+			if(console){console.log('window bind');}
+			$(window).on('keydown.selected_box',function(e){
+				if(e.keyCode===9){ //tab
+					e.preventDefault();
+					self.newChild();
+				}
+				if(e.keyCode===8){ //delete button
+					self.deleteBox();
+				}
+			});
+		},
+		deselectBox:function(){
+			this.obj.removeClass('selected');
+			if(console){console.log('window unbind');}
+			$(window).unbind('keydown.selected_box');
+		},
+		newChild:function(){
+			var new_box = new Box({
+				text:'New box',
+				posx:this.obj.position().left + this.obj.outerWidth() + 20,
+				posy:this.obj.position().top,
+				type:(this.type==='choice'?'question':'choice')
+			},this.par,this.par.boxes.length);
+			this.par.boxes.push(new_box);
+			this.connect(new_box);
+			this.deselectBox();
+			new_box.selectBox();
+		},
+		deleteBox:function(){
+			this.deselectBox();
+			this.removeLines();
+			this.obj.remove();
+			delete this.par.selected_box;
+		},
+		removeLines:function(){
+			if(console){console.log('remove lines');}
+			if(console){console.log(this);}
+			for(var i in this.lines){
+				var line = this.lines[i];
+				var from_box = line.from_box;
+				var to_box = line.to_box;
+				line[0].remove();
+				line[1].remove();
+				delete from_box.lines[to_box.id];
+				delete to_box.lines[from_box.id];
+			}
+		}
+	};
+	$(document).unbind('keydown').bind('keydown.undelete', function (event) {
+		var doPrevent = false;
+		if (event.keyCode === 8) {
+			var d = event.srcElement || event.target;
+			if ((d.tagName.toUpperCase() === 'INPUT' && (d.type.toUpperCase() === 'TEXT' || d.type.toUpperCase() === 'PASSWORD' || d.type.toUpperCase() === 'FILE')) || d.tagName.toUpperCase() === 'TEXTAREA') {
+				doPrevent = d.readOnly || d.disabled;
+			}
+			else {
+				doPrevent = true;
+			}
+		}
+
+		if (doPrevent) {
+			event.preventDefault();
+		}
+	});
+	var my_interactive = new Interactive();
+});        //]]>
+    </script>    <script src="./cyoa_files/jquery-ui.js"></script>
+    <style type="text/css">#int {
+  width: 100%;
+  height: 100%;
+  position: fixed; }
+
+#space {
+  width: 100%;
+  height: 100%;
+  outline: 1px solid gray;
+  background-color: #e3e3e3; }
+
+.box {
+  -moz-user-select: -moz-none;
+  -khtml-user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  cursor: default;
+  background-color: white;
+  padding: 10px;
+  position: absolute;
+  left: 100px;
+  top: 100px;
+  box-shadow: 3px 3px 5px rgba(0, 0, 0, 0.3); }
+  .box.selected {
+    background-color: #c7c7c7; }
+  .box.question {
+    font-size: 20px; }
+  .box.choice {
+    font-style: italic; }
+  .box textarea {
+    border: none; }
+</style>
+    
+    <div id="int">
+
+        <div id="space"><svg height="10000" version="1.1" width="10000" xmlns="http://www.w3.org/2000/svg" style="overflow: hidden; position: relative;"><desc style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0);">Created with Raphaël 2.1.2</desc><defs style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0);"></defs><path fill="#000000" stroke="#000000" d="M190,121.97368421052632L182,113.97368421052632L182,129.9736842105263L190,121.97368421052632" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0);" transform="matrix(0.9993,-0.0368,0.0368,0.9993,-4.3619,7.0779)"></path><path fill="none" stroke="#000000" d="M135,124L190,121.97368421052632" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0);"></path></svg><div class="box question ui-draggable" style="left: 100px; top: 100px;">Box 0</div><div class="box choice ui-draggable" style="left: 190px; top: 100px;"><textarea>New box</textarea></div></div>
+
+    </div><!--end interactive -->
+
+<i title="Raphaël Colour Picker" style="display: none; color: black;"></i></body></html>
