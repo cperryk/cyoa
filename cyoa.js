@@ -1,7 +1,15 @@
 $(function(){
 
 	// css.color is REQUIRED to draw the lines
-	var BOX_TYPES = {
+	var BOX_MODEL = {
+		'question':{
+			class_name:'question',
+			css:{
+				color:'#005799',
+			},
+			default_child:'choice',
+			hotkey:49
+		},		
 		'choice':{
 			class_name:'choice',
 			css:{
@@ -10,14 +18,6 @@ $(function(){
 			},
 			default_child:'question',
 			hotkey:50
-		},
-		'question':{
-			class_name:'question',
-			css:{
-				color:'#005799',
-			},
-			default_child:'choice',
-			hotkey:49
 		},
 		'conditional':{
 			class_name:'conditional',
@@ -53,29 +53,30 @@ $(function(){
 		}
 	});
 	Raphael.fn.arrow = function (x1, y1, x2, y2, stroke_width, size, color) {
-		var angle = Math.atan2(x1-x2,y2-y1);
-		angle = (angle / (2 * Math.PI)) * 360;
-		var linePath = this.path("M" + x1 + " " + y1 + " L" + x2 + " " + y2)
-			.attr({
-				'stroke-opacity':0.2,
-				'stroke-width':2,
-				'stroke':color
-			});
-		var arrowPath = this.path("M" + x2 + " " + y2 + " L" + (x2 - size) + " " + (y2 - size) + " L" + (x2 - size) + " " + (y2 + size) + " L" + x2 + " " + y2 ).attr("fill","black").rotate((90+angle),x2,y2)
+		return [
+			this.path("M" + x1 + " " + y1 + " L" + x2 + " " + y2)
+				.attr({
+					'stroke-opacity':0.2,
+					'stroke-width':2,
+					'stroke':color
+				}),
+			this.path("M" + x2 + " " + y2 + " L" + (x2 - size) + " " + (y2 - size) + " L" + (x2 - size) + " " + (y2 + size) + " L" + x2 + " " + y2 ).attr("fill","black").rotate((90+((Math.atan2(x1-x2,y2-y1) / (2 * Math.PI)) * 360)),x2,y2)
 			.attr({
 				'stroke-width':stroke_width,
 				'cursor':'pointer',
 				'fill':color,
 				'stroke':color
-			});
-			return [linePath,arrowPath];
+			})
+		];
 	};
 	function Interactive(){
 		this.space = $('#space');//.draggable();
 		this.paper = new Raphael('space',10000,10000);
 		this.selected_boxes = new BoxGroup(this);
+		this.box_model = BOX_MODEL;
 		this.boxes = [];
 		this
+			.printClasses()
 			.addEventListeners()
 			.adjustSize();
 	}
@@ -86,6 +87,7 @@ $(function(){
 				var box = box_data[i];
 				this.boxes.push(new Box(box,this));
 			}
+			return this;
 		},
 		addEventListeners:function(){
 			var self = this;
@@ -183,9 +185,10 @@ $(function(){
 							else{
 								var c = 0;
 								if(e.metaKey){
-									for(var i in BOX_TYPES){
-										if(BOX_TYPES.hasOwnProperty(i)){
-											if(e.keyCode===BOX_TYPES[i].hotkey){
+									var box_model = self.box_model;
+									for(var i in box_model){
+										if(box_model.hasOwnProperty(i)){
+											if(e.keyCode===self.box_model[i].hotkey){
 												self.selected_boxes.changeClass(i);
 											}
 										}
@@ -203,19 +206,22 @@ $(function(){
 			return this;
 		},
 		getExportData:function(){
-			var data = [];
 			var self = this;
-			for(var i=0;i<this.boxes.length;i++){
+			var boxes = [];
+			for (var i = 0; i < this.boxes.length; i++) {
 				var box = this.boxes[i];
-				data.push({
-					text:safeTags(box.obj.html()),
-					box_type:box.box_type.class_name,
-					posx:box.obj.position().left,
-					posy:box.obj.position().top,
-					out_connections:getConnectionIDs(box)
+				boxes.push({
+					text: safeTags(box.obj.html()),
+					box_type: box.box_type.class_name,
+					posx: box.obj.position().left,
+					posy: box.obj.position().top,
+					out_connections: getConnectionIDs(box)
 				});
 			}
-			return data;
+			return {
+				model: this.box_model,
+				boxes: boxes
+			};
 			function getConnectionIDs(box){
 				var arr = [];
 				for(var i=0;i<box.out_connections.length;i++){
@@ -228,10 +234,14 @@ $(function(){
 			}
 		},
 		importData:function(data){
-			this.printBoxes(data);
-			for(var i=0;i<this.boxes.length;i++){
-				for(var a=0;a<data[i].out_connections.length;a++){
-					this.boxes[i].connect(this.boxes[data[i].out_connections[a]]);
+			this.box_model = data.model;
+			var import_boxes = data.boxes;
+			this
+				.printBoxes(import_boxes)
+				.printClasses();
+			for (var i = 0; i < this.boxes.length; i++) {
+				for (var a = 0; a < import_boxes[i].out_connections.length; a++) {
+					this.boxes[i].connect(this.boxes[import_boxes[i].out_connections[a]]);
 				}
 			}
 		},
@@ -334,6 +344,17 @@ $(function(){
 			setInterval(120000,function(){
 				self.saveFile();
 			});
+		},
+		printClasses:function(){
+			var btn_class = $('#btn_class').empty();
+			var box_model = this.box_model;
+			for(var i in box_model){
+				if(box_model.hasOwnProperty(i)){
+					$('<option id="option_'+i+'">'+i+'</option>')
+						.appendTo(btn_class);
+				}
+			}
+			return this;
 		}
 	};
 	function BoxGroup(par){
@@ -451,7 +472,7 @@ $(function(){
 				return count;
 			}());
 		this.par = par;
-		this.box_type = BOX_TYPES[conf.box_type];
+		this.box_type = par.box_model[conf.box_type];
 		var self = this;
 		this.obj = $('<div>')
 			.addClass('box')
@@ -683,7 +704,7 @@ $(function(){
 			}
 		},
 		changeClass:function(class_name){
-			this.box_type = BOX_TYPES[class_name];
+			this.box_type = this.par.box_model[class_name];
 			var pos = this.obj.position();
 			this.obj
 				.attr('style','')
