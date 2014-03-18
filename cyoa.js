@@ -55,7 +55,6 @@ $(function(){
 	Raphael.fn.arrow = function (x1, y1, x2, y2, stroke_width, size, color) {
 		var angle = Math.atan2(x1-x2,y2-y1);
 		angle = (angle / (2 * Math.PI)) * 360;
-
 		var linePath = this.path("M" + x1 + " " + y1 + " L" + x2 + " " + y2)
 			.attr({
 				'stroke-opacity':0.2,
@@ -75,7 +74,7 @@ $(function(){
 		this.space = $('#space');//.draggable();
 		this.paper = new Raphael('space',10000,10000);
 		this.selected_boxes = new BoxGroup(this);
-		this.boxes = {};
+		this.boxes = [];
 		this
 			.addEventListeners()
 			.adjustSize();
@@ -83,10 +82,9 @@ $(function(){
 	Interactive.prototype = {
 		printBoxes:function(box_data){
 			this.boxes = [];
-			for(var i in box_data){
+			for(var i=0;i<box_data.length;i++){
 				var box = box_data[i];
-				box.id = i;
-				this.boxes[box.id] = new Box(box,this);
+				this.boxes.push(new Box(box,this));
 			}
 		},
 		addEventListeners:function(){
@@ -132,7 +130,7 @@ $(function(){
 				self.space
 					.on('mousedown',function(e){
 						if($(e.target).hasClass('box')){
-							var clicked_box = self.boxes[$(e.target).data('box_id')];
+							var clicked_box = self.boxes[$(e.target).index()];
 							if(e.metaKey){
 								self.selected_boxes.connect(clicked_box);
 							}
@@ -145,7 +143,7 @@ $(function(){
 									text:'New box',
 									box_type:$('select').val()
 								},self);
-								self.boxes[box.id] = box;
+								self.boxes.push(box);
 								self.selected_boxes.connect(box);
 							}
 							else{
@@ -160,7 +158,7 @@ $(function(){
 					})
 					.on('click',function(e){
 						if($(e.target).hasClass('box')){
-							var clicked_box = self.boxes[$(e.target).data('box_id')];
+							var clicked_box = self.boxes[$(e.target).index()];
 							if(self.selected_boxes.boxes.length>0&&(!e.shiftKey)){
 								self.selected_boxes.empty();
 							}
@@ -194,12 +192,7 @@ $(function(){
 									}
 								}
 							}
-						}/*
-						else{
-							if(e.keyCode===8){
-								e.preventDefault();
-							}
-						}*/
+						}
 					});
 			}());
 			(function addResizeListener(){
@@ -210,28 +203,35 @@ $(function(){
 			return this;
 		},
 		getExportData:function(){
-			var data = {};
-			for(var i in this.boxes){
+			var data = [];
+			var self = this;
+			for(var i=0;i<this.boxes.length;i++){
 				var box = this.boxes[i];
-				data[i] = {
+				data.push({
 					text:safeTags(box.obj.html()),
 					box_type:box.box_type.class_name,
 					posx:box.obj.position().left,
 					posy:box.obj.position().top,
-					out_connections:box.out_connections
-				};
+					out_connections:getConnectionIDs(box)
+				});
 			}
 			return data;
+			function getConnectionIDs(box){
+				var arr = [];
+				for(var i=0;i<box.out_connections.length;i++){
+					arr.push(self.boxes.indexOf(box.out_connections[i]));
+				}
+				return arr;
+			}
 			function safeTags(str) {
 				return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') ;
 			}
 		},
 		importData:function(data){
 			this.printBoxes(data);
-			for(var i in this.boxes){
-				var box = this.boxes[i];
-				for(var a in box.out_connections){
-					box.lineTo(this.boxes[a]);
+			for(var i=0;i<this.boxes.length;i++){
+				for(var a=0;a<data[i].out_connections.length;a++){
+					this.boxes[i].connect(this.boxes[data[i].out_connections[a]]);
 				}
 			}
 		},
@@ -289,8 +289,6 @@ $(function(){
 			var self = this;
 			$('#btn_save').fadeTo(500,0.2);
 			function errorHandler(data) {
-				if (console) {
-				}
 			}
 			this.writeable_file_entry.createWriter(function(writer) {
 				writer.onerror = errorHandler;
@@ -299,8 +297,6 @@ $(function(){
 				writer.write(new Blob([JSON.stringify(self.getExportData())], {
 					type: 'text/plain'
 				}));
-				if (console) {
-				}
 			}, errorHandler);
 			$('#btn_save').fadeTo(500,1);
 		},
@@ -308,8 +304,6 @@ $(function(){
 			var self = this;
 			var chosenFileEntry = null;
 			function errorHandler(data) {
-				if (console) {
-				}
 			}
 			chrome.fileSystem.chooseEntry({
 				type: 'openWritableFile',
@@ -468,7 +462,7 @@ $(function(){
 				top:conf.posy
 			})
 			.css(this.box_type.css)
-			.appendTo(par.space)
+			.appendTo('#boxes')
 			.draggable({
 				start:function(){
 					if(!par.selected_boxes.hasBox(self)){
@@ -490,8 +484,9 @@ $(function(){
 			.dblclick(function(){
 				self.enterEditing();
 			});
-		this.out_connections = conf.out_connections ? conf.out_connections : {};
-		this.lines = {};
+		//this.out_connections = conf.out_connections ? conf.out_connections : [];
+		this.out_connections = [];
+		this.lines = [];
 	}
 	Box.prototype = {
 		enterEditing:function(){
@@ -549,8 +544,8 @@ $(function(){
 			this.reprintLines();
 		},
 		connect:function(to_box){
-			if(this.out_connections[to_box.id]===undefined && to_box.out_connections[this.id]===undefined){
-				this.out_connections[to_box.id] = true;
+			if(this.out_connections.indexOf(to_box)===-1 && to_box.out_connections.indexOf(this)===-1){
+				this.out_connections.push(to_box);
 				this.lineTo(to_box);
 			}
 			return this;
@@ -559,34 +554,11 @@ $(function(){
 			var a_x = this.obj.position().left + this.obj.outerWidth()/2;
 			var a_y = this.obj.position().top + this.obj.outerHeight()/2;
 			// starting with Point and Rectangle Types, as they ease calculation
-			var Point = function(x, y) {
-				return {
-					x: x,
-					y: y
-				};
-			};
-			var Rect = function(x, y, w, h) {
-				return {
-					x: x,
-					y: y,
-					width: w,
-					height: h
-				};
-			};
-			var isLeftOf = function(pt1, pt2) {
-				return pt1.x < pt2.x;
-			};
-			var isAbove = function(pt1, pt2) {
-				return pt1.y < pt2.y;
-			};
 			var centerOf = function(rect) {
-				return Point(
-					rect.x + rect.width / 2,
-					rect.y + rect.height / 2
-				);
-			};
-			var gradient = function(pt1, pt2) {
-				return (pt2.y - pt1.y) / (pt2.x - pt1.x);
+				return {
+					x:rect.x + rect.width / 2,
+					y:rect.y + rect.height / 2
+				};
 			};
 			var aspectRatio = function(rect) {
 				return rect.height / rect.width;
@@ -596,63 +568,45 @@ $(function(){
 			var pointOnEdge = function(fromRect, toRect) {
 				var centerA = centerOf(fromRect),
 					centerB = centerOf(toRect),
-					// calculate the gradient from rectA to rectB
-					gradA2B = gradient(centerA, centerB),
-					// grab the aspectRatio of rectA
-					// as we want any dimensions to work with the script
+					gradA2B = (centerB.y - centerA.y) / (centerB.x - centerA.x),
 					aspectA = aspectRatio(fromRect),
-
-					// grab the half values, as they are used for the additional point
 					h05 = fromRect.width / 2,
 					w05 = fromRect.height / 2,
-
-					// the norm is the normalized gradient honoring the aspect Ratio of rectA
 					normA2B = Math.abs(gradA2B / aspectA),
-
-					// the additional point
-					add = Point(
-						// when the rectA is left of rectB we move right, else left
-						(isLeftOf(centerA, centerB) ? 1 : -1) * h05,
-						// when the rectA is below
-						(isAbove(centerA, centerB) ? 1 : -1) * w05
-					);
-
-				// norm values are absolute, thus we can compare whether they are
-				// greater or less than 1
+					add = {
+						x: ((centerA.x < centerB.x) ? 1 : -1) * h05,
+						y: (centerA.y < centerB.y ? 1 : -1) * w05
+					};
 				if (normA2B < 1) {
-					// when they are less then 1 multiply the y component with the norm
 					add.y *= normA2B;
 				} else {
-					// otherwise divide the x component by the norm
 					add.x /= normA2B;
 				}
-				// this way we will stay on the edge with at least one component of the result
-				// while the other component is shifted towards the center
-
-				return Point(centerA.x + add.x, centerA.y + add.y);
+				return {
+					x: centerA.x + add.x,
+					y: centerA.y + add.y
+				};
 			};
-			var rect_1 = Rect(this.obj.position().left, this.obj.position().top, this.obj.outerWidth(), this.obj.outerHeight());
-			var rect_2 = Rect(to_box.obj.position().left-5, to_box.obj.position().top-5, to_box.obj.outerWidth()+10, to_box.obj.outerHeight()+10);
+			var rect_1 = {x:this.obj.position().left,y:this.obj.position().top,width:this.obj.outerWidth(),height:this.obj.outerHeight()};
+			var rect_2 = {x:to_box.obj.position().left-5,y:to_box.obj.position().top-5,width:to_box.obj.outerWidth()+10,height:to_box.obj.outerHeight()+10};
 			var point = pointOnEdge(rect_2,rect_1);
 
 			var line = new Line(this.par,a_x,a_y,point.x,point.y,this,to_box);
-			this.lines[to_box.id] = line;
-			to_box.lines[this.id] = line;
+			this.lines.push(line);
+			to_box.lines.push(line);
 			return line;
 		},
 		reprintLines:function(){
-			for(var i in this.lines){
-				if(this.lines.hasOwnProperty(i)){
-					var line = this.lines[i];
-					var from_box = line.from_box;
-					var to_box = line.to_box;
-					line.deleteLine();
-					from_box.lineTo(to_box);
-				}
+			for(var i=this.lines.length-1;i>=0;i--){
+				var line = this.lines[i];
+				var from_box = line.from_box;
+				var to_box = line.to_box;
+				line.deleteLine();
+				from_box.lineTo(to_box);
 			}
 		},
 		addLineListeners:function(){
-			for(var i in this.lines){
+			for(var i=this.lines.length;i>=0;i--){
 				var line = this.lines[i];
 			}
 			var self = this;
@@ -696,24 +650,33 @@ $(function(){
 			return this;
 		},
 		deleteBox:function(){
-			this
-				.removeAllConnections();
+			this.removeAllConnections();
 			this.obj.remove();
 			delete this.par.selected_box;
-			delete this.par.boxes[this.id];
+			this.par.boxes.splice(this.par.boxes.indexOf(this),1);
 		},
 		removeLines:function(){
-			for(var i in this.lines){
-				this.lines[i].deleteLine();
+			var lines = this.lines;
+			while(lines.length>0){
+				lines[lines.length-1].deleteLine();
 			}
 		},
 		removeConnection:function(to_box){
-			this.lines[to_box.id].deleteLine();
-			delete this.out_connections[to_box.id];
+			for(var i=this.out_connections.length-1;i>=0;i--){
+				if(this.out_connections[i]===to_box){
+					this.out_connections.splice(i,1);
+				}
+			}
+			for(var a=this.lines.length-1;a>=0;a--){
+				if(this.lines[a].to_box===to_box){
+					this.lines[a].deleteLine();
+				}
+			}
 		},
 		removeAllConnections:function(){
-			for(var i in this.lines){
-				var line = this.lines[i];
+			var lines = this.lines;
+			while(lines.length>0){
+				var line = lines[lines.length-1];
 				var from_box = line.from_box;
 				var to_box = line.to_box;
 				from_box.removeConnection(to_box);
@@ -748,8 +711,8 @@ $(function(){
 			this.deselectLine();
 			this.raphael_object[0].remove();
 			this.raphael_object[1].remove();
-			delete this.from_box.lines[this.to_box.id];
-			delete this.to_box.lines[this.from_box.id];
+			this.from_box.lines.splice(this.from_box.lines.indexOf(this),1);
+			this.to_box.lines.splice(this.to_box.lines.indexOf(this),1);
 		},
 		printIndex:function(index){
 			var length = this.raphael_object[0].getTotalLength();
